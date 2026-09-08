@@ -705,6 +705,7 @@ describe("buildCursorCapabilitiesFromConfigOptions", () => {
     );
   });
 
+  /** Auto Smart ACP fixture exposes Intelligence / Balance / Cost via optimizeFor. */
   it("derives Optimize For modes for Cursor Router Auto", () => {
     expect(buildCursorCapabilitiesFromConfigOptions(parameterizedAutoSmartConfigOptions)).toEqual(
       createModelCapabilities({
@@ -1007,6 +1008,7 @@ describe("resolveCursorAcpConfigUpdates", () => {
     ]);
   });
 
+  /** Cost selection maps back to the ACP optimize_for config id and value. */
   it("writes Cursor Router Optimize For Cost through optimize_for", () => {
     expect(
       resolveCursorAcpConfigUpdates(parameterizedAutoSmartConfigOptions, [
