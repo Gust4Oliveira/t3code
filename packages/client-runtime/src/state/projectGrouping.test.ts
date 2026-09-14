@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { EnvironmentProject } from "./models.ts";
 import { chooseLoadBalancedEnvironment } from "../load-balancing.ts";
 import {
+  applyProjectGroupingOverrideToMembers,
   buildProjectGroups,
   derivePhysicalProjectKey,
   type ProjectGroupingSettings,
@@ -116,24 +117,145 @@ function settings(
   };
 }
 
+describe("applyProjectGroupingOverrideToMembers", () => {
+  it("writes the same override for every checkout in the group", () => {
+    const first = makeProject("t3code", "/work/t3code");
+    const second = makeProject("t3code-2", "/work/t3code-2", {
+      environmentId: EnvironmentId.make("remote"),
+    });
+
+    expect(
+      applyProjectGroupingOverrideToMembers({
+        overrides: {
+          [derivePhysicalProjectKey(first)]: "separate",
+        },
+        members: [first, second],
+        selection: "repository_path",
+      }),
+    ).toEqual({
+      [derivePhysicalProjectKey(first)]: "repository_path",
+      [derivePhysicalProjectKey(second)]: "repository_path",
+    });
+  });
+
+  it("clears overrides for every checkout when inheriting the global default", () => {
+    const first = makeProject("t3code", "/work/t3code");
+    const second = makeProject("t3code-2", "/work/t3code-2", {
+      environmentId: EnvironmentId.make("remote"),
+    });
+
+    expect(
+      applyProjectGroupingOverrideToMembers({
+        overrides: {
+          [derivePhysicalProjectKey(first)]: "repository_path",
+          [derivePhysicalProjectKey(second)]: "separate",
+          "unrelated:checkout": "repository",
+        },
+        members: [first, second],
+        selection: "inherit",
+      }),
+    ).toEqual({
+      "unrelated:checkout": "repository",
+    });
+  });
+});
+
 describe("buildProjectGroups", () => {
-  it("preserves every physical clone as a selectable member in repository modes", () => {
+  it("preserves every physical project as a selectable member when grouping by repository", () => {
     const projects = [
       makeProject("t3code", "/work/t3code"),
       makeProject("t3code-2", "/work/t3code-2"),
       makeProject("t3code-3", "/work/t3code-3"),
     ];
 
-    for (const mode of ["repository", "repository_path"] as const) {
-      const groups = buildProjectGroups({ projects, settings: settings(mode) });
-      expect(groups).toHaveLength(1);
-      expect(groups[0]?.members.map((member) => member.project.id)).toEqual([
-        "t3code",
-        "t3code-2",
-        "t3code-3",
-      ]);
-      expect(groups[0]?.memberProjectRefs).toHaveLength(3);
-    }
+    const groups = buildProjectGroups({ projects, settings: settings("repository") });
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.members.map((member) => member.project.id)).toEqual([
+      "t3code",
+      "t3code-2",
+      "t3code-3",
+    ]);
+    expect(groups[0]?.memberProjectRefs).toHaveLength(3);
+  });
+
+  it("keeps differently named checkouts separate in repository_path mode", () => {
+    const projects = [
+      makeProject("t3code", "/work/t3code"),
+      makeProject("t3code-2", "/work/t3code-2"),
+      makeProject("t3code-3", "/work/t3code-3"),
+    ];
+
+    const groups = buildProjectGroups({ projects, settings: settings("repository_path") });
+    expect(groups).toHaveLength(3);
+    expect(groups.map((group) => group.members.map((member) => member.project.id))).toEqual([
+      ["t3code"],
+      ["t3code-2"],
+      ["t3code-3"],
+    ]);
+  });
+
+  it("groups same-named checkouts across environments in repository_path mode", () => {
+    const localEnvironmentId = EnvironmentId.make("local");
+    const remoteEnvironmentId = EnvironmentId.make("remote");
+    const projects = [
+      makeProject("local-current", "/Users/dev/Current/app-current", {
+        environmentId: localEnvironmentId,
+        repositoryIdentity: {
+          ...repositoryIdentity,
+          rootPath: "/Users/dev/Current/app-current",
+        },
+      }),
+      makeProject("local-experimental", "/Users/dev/Experimental/app-experimental", {
+        environmentId: localEnvironmentId,
+        repositoryIdentity: {
+          ...repositoryIdentity,
+          rootPath: "/Users/dev/Experimental/app-experimental",
+        },
+      }),
+      makeProject("remote-current", "/home/dev/workspace/current/app-current", {
+        environmentId: remoteEnvironmentId,
+        repositoryIdentity: {
+          ...repositoryIdentity,
+          rootPath: "/home/dev/workspace/current/app-current",
+        },
+      }),
+      makeProject("remote-experimental", "/home/dev/workspace/experimental/app-experimental", {
+        environmentId: remoteEnvironmentId,
+        repositoryIdentity: {
+          ...repositoryIdentity,
+          rootPath: "/home/dev/workspace/experimental/app-experimental",
+        },
+      }),
+    ];
+
+    const groups = buildProjectGroups({ projects, settings: settings("repository_path") });
+    expect(groups).toHaveLength(2);
+    expect(
+      groups
+        .map((group) => group.members.map((member) => member.project.id).toSorted())
+        .toSorted((left, right) => left[0]!.localeCompare(right[0]!)),
+    ).toEqual([
+      ["local-current", "remote-current"],
+      ["local-experimental", "remote-experimental"],
+    ]);
+  });
+
+  it("keeps monorepo package paths distinct in repository_path mode", () => {
+    const projects = [
+      makeProject("web", "/work/monorepo/apps/web", {
+        repositoryIdentity: { ...repositoryIdentity, rootPath: "/work/monorepo" },
+      }),
+      makeProject("mobile", "/work/monorepo/apps/mobile", {
+        repositoryIdentity: { ...repositoryIdentity, rootPath: "/work/monorepo" },
+      }),
+    ];
+
+    const groups = buildProjectGroups({ projects, settings: settings("repository_path") });
+    expect(groups).toHaveLength(2);
+    expect(groups.map((group) => group.key).toSorted()).toEqual([
+      "github.com/t3tools/t3code::apps/mobile",
+      "github.com/t3tools/t3code::apps/web",
+    ]);
   });
 
   it("uses a shared custom title as the repository group's label", () => {
@@ -158,7 +280,7 @@ describe("buildProjectGroups", () => {
     );
   });
 
-  it("keeps physical clones in separate groups when requested", () => {
+  it("keeps physical projects in separate groups when requested", () => {
     const projects = [
       makeProject("t3code", "/work/t3code"),
       makeProject("t3code-2", "/work/t3code-2"),

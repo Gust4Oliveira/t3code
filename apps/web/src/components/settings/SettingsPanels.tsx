@@ -152,10 +152,6 @@ import {
   normalizeIntervalSeconds,
   PROVIDER_HEALTH_INTERVAL_STEP_SECONDS,
   hasChangedBackgroundActivitySettings,
-  isProjectGroupingEnabled,
-  projectGroupingModeFromToggle,
-  readLastEnabledProjectGroupingMode,
-  rememberEnabledProjectGroupingMode,
   resolveBackgroundActivityProfileOption,
 } from "./SettingsPanels.logic";
 import {
@@ -189,6 +185,19 @@ const RESPONSE_STREAMING_MODE_DESCRIPTIONS: Record<ResponseStreamingMode, string
   paragraph: "Each paragraph or code block appears as soon as it is complete.",
   token:
     "Every token repaints the answer as it arrives. Slower and harder to read. Thinking traces still arrive a paragraph at a time.",
+};
+
+const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> = {
+  repository: "Group by repository",
+  repository_path: "Group by repository path",
+  separate: "Keep separate",
+};
+
+const PROJECT_GROUPING_MODE_DESCRIPTIONS: Record<SidebarProjectGroupingMode, string> = {
+  repository: "Matching repositories appear as one project across environments.",
+  repository_path:
+    "Same repository and checkout folder (or monorepo path) appear as one project across environments.",
+  separate: "Every workspace path stays its own project.",
 };
 
 const TIMESTAMP_FORMAT_LABELS = {
@@ -2120,9 +2129,6 @@ export function GeneralSettingsPanel() {
   const [backgroundActivityDialogOpen, setBackgroundActivityDialogOpen] = useState(false);
   const [tokenStreamingWarningOpen, setTokenStreamingWarningOpen] = useState(false);
   const mixedResponseStreamingMode = useScopedSettingsMixed(["responseStreamingMode"]);
-  const lastEnabledProjectGroupingMode = useRef<SidebarProjectGroupingMode>(
-    readLastEnabledProjectGroupingMode(),
-  );
   const serverProviders = environment?.serverConfig?.providers ?? EMPTY_SERVER_PROVIDERS;
   const supportsAutoSettlement =
     connectedEnvironments.length > 0 &&
@@ -2193,7 +2199,7 @@ export function GeneralSettingsPanel() {
       <SettingsSection id="organization" title="Organization">
         <SettingsRow
           {...searchableSetting("project-grouping")}
-          description="Combine matching repositories across environments."
+          description={PROJECT_GROUPING_MODE_DESCRIPTIONS[settings.sidebarProjectGroupingMode]}
           resetAction={
             settings.sidebarProjectGroupingMode !==
             DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode ? (
@@ -2208,22 +2214,31 @@ export function GeneralSettingsPanel() {
             ) : null
           }
           control={
-            <Switch
-              checked={isProjectGroupingEnabled(settings.sidebarProjectGroupingMode)}
-              onCheckedChange={(checked) => {
-                if (!checked && settings.sidebarProjectGroupingMode !== "separate") {
-                  lastEnabledProjectGroupingMode.current = settings.sidebarProjectGroupingMode;
-                  rememberEnabledProjectGroupingMode(settings.sidebarProjectGroupingMode);
+            <Select
+              value={settings.sidebarProjectGroupingMode}
+              onValueChange={(value) => {
+                if (value === "repository" || value === "repository_path" || value === "separate") {
+                  updateSettings({ sidebarProjectGroupingMode: value });
                 }
-                updateSettings({
-                  sidebarProjectGroupingMode: projectGroupingModeFromToggle(
-                    checked,
-                    lastEnabledProjectGroupingMode.current,
-                  ),
-                });
               }}
-              aria-label="Project grouping"
-            />
+            >
+              <SelectTrigger size="sm" className="w-full sm:w-56" aria-label="Project grouping">
+                <SelectValue>
+                  {PROJECT_GROUPING_MODE_LABELS[settings.sidebarProjectGroupingMode]}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                <SelectItem hideIndicator value="repository">
+                  {PROJECT_GROUPING_MODE_LABELS.repository}
+                </SelectItem>
+                <SelectItem hideIndicator value="repository_path">
+                  {PROJECT_GROUPING_MODE_LABELS.repository_path}
+                </SelectItem>
+                <SelectItem hideIndicator value="separate">
+                  {PROJECT_GROUPING_MODE_LABELS.separate}
+                </SelectItem>
+              </SelectPopup>
+            </Select>
           }
         />
 

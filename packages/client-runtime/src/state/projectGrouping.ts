@@ -37,6 +37,26 @@ function uniqueNonEmptyValues(values: ReadonlyArray<string | null | undefined>):
   return unique;
 }
 
+function workspaceFolderName(workspaceRoot: string): string {
+  const normalized = normalizeProjectPathForComparison(workspaceRoot);
+  if (normalized.length === 0) {
+    return "";
+  }
+
+  const lastSeparator = Math.max(normalized.lastIndexOf("/"), normalized.lastIndexOf("\\"));
+  if (lastSeparator < 0) {
+    return normalized;
+  }
+
+  // Drive roots (`C:\`) and `/` have no folder name; treat them as empty so
+  // they do not invent a synthetic path discriminator.
+  if (lastSeparator === normalized.length - 1) {
+    return "";
+  }
+
+  return normalized.slice(lastSeparator + 1);
+}
+
 function deriveRepositoryRelativeProjectPath(
   project: Pick<EnvironmentProject, "workspaceRoot" | "repositoryIdentity">,
 ): string | null {
@@ -52,7 +72,11 @@ function deriveRepositoryRelativeProjectPath(
   }
 
   if (normalizedProjectPath === normalizedRootPath) {
-    return "";
+    // Full clones sit at the repo root, so there is no monorepo-relative path.
+    // Use the checkout folder name so differently named clones of the same
+    // remote (e.g. newsbotweb-current vs newsbotweb-experimental) stay apart
+    // while matching folder names still group across machines.
+    return workspaceFolderName(project.workspaceRoot);
   }
 
   const separator = normalizedRootPath.includes("\\") ? "\\" : "/";
@@ -96,6 +120,28 @@ export function resolveProjectGroupingMode(
   );
 }
 
+/**
+ * Writes or clears the grouping override for every checkout in a logical
+ * group. Per-path overrides that only cover some members split same-repo
+ * checkouts across modes and break cross-environment pairing.
+ */
+export function applyProjectGroupingOverrideToMembers(input: {
+  readonly overrides: Readonly<Record<string, SidebarProjectGroupingMode>>;
+  readonly members: ReadonlyArray<Pick<EnvironmentProject, "environmentId" | "workspaceRoot">>;
+  readonly selection: SidebarProjectGroupingMode | "inherit";
+}): Record<string, SidebarProjectGroupingMode> {
+  const nextOverrides = { ...input.overrides };
+  for (const member of input.members) {
+    const overrideKey = deriveProjectGroupingOverrideKey(member);
+    if (input.selection === "inherit") {
+      delete nextOverrides[overrideKey];
+    } else {
+      nextOverrides[overrideKey] = input.selection;
+    }
+  }
+  return nextOverrides;
+}
+
 function deriveRepositoryScopedKey(
   project: Pick<EnvironmentProject, "workspaceRoot" | "repositoryIdentity">,
   groupingMode: SidebarProjectGroupingMode,
@@ -111,7 +157,11 @@ function deriveRepositoryScopedKey(
 
   const relativeProjectPath = deriveRepositoryRelativeProjectPath(project);
   if (relativeProjectPath === null) {
-    return canonicalKey;
+    // No rootPath to compare against (common for remote identity without a
+    // recorded checkout root). Fall back to the workspace folder name so
+    // repository_path still separates sibling clones of the same remote.
+    const folderName = workspaceFolderName(project.workspaceRoot);
+    return folderName.length === 0 ? canonicalKey : `${canonicalKey}::${folderName}`;
   }
 
   return relativeProjectPath.length === 0
@@ -128,7 +178,7 @@ export function deriveLogicalProjectKey(
     readonly groupingMode?: SidebarProjectGroupingMode;
   },
 ): string {
-  const groupingMode = options?.groupingMode ?? "repository";
+  const groupingMode = options?.groupingMode ?? "repository_path";
   if (groupingMode === "separate") {
     return derivePhysicalProjectKey(project);
   }

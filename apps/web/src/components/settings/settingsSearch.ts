@@ -263,7 +263,9 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "project-grouping",
     title: "Project grouping",
     to: "/settings/general",
-    searchTerms: ["combine matching repositories environments sidebar"],
+    searchTerms: [
+      "combine matching repositories environments sidebar checkout folder path monorepo",
+    ],
   },
   {
     id: "auto-settle-inactive-threads",

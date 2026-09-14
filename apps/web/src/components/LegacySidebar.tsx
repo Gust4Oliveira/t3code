@@ -201,6 +201,7 @@ import { CommandDialogTrigger } from "./ui/command";
 import { useClientSettings, useUpdateClientSettings } from "~/hooks/useSettings";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import {
+  applyProjectGroupingOverrideToMembers,
   derivePhysicalProjectKey,
   deriveProjectGroupingOverrideKey,
   getProjectOrderKey,
@@ -274,7 +275,7 @@ function projectGroupingModeDescription(mode: SidebarProjectGroupingMode): strin
     case "repository":
       return "Projects from the same repository share one sidebar row.";
     case "repository_path":
-      return "Projects group only when both the repository and repo-relative path match.";
+      return "Projects group when the repository and checkout folder (or monorepo path) match.";
     case "separate":
       return "Every project path gets its own sidebar row.";
   }
@@ -2206,21 +2207,20 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       return;
     }
 
-    const overrideKey = deriveProjectGroupingOverrideKey(projectGroupingTarget);
-    const nextOverrides = {
-      ...projectGroupingSettings.sidebarProjectGroupingOverrides,
-    };
-    if (projectGroupingSelection === "inherit") {
-      delete nextOverrides[overrideKey];
-    } else {
-      nextOverrides[overrideKey] = projectGroupingSelection;
-    }
     updateSettings({
-      sidebarProjectGroupingOverrides: nextOverrides,
+      sidebarProjectGroupingOverrides: applyProjectGroupingOverrideToMembers({
+        overrides: projectGroupingSettings.sidebarProjectGroupingOverrides,
+        // Apply to every checkout currently in this logical group so a
+        // path-mode override cannot leave a sibling on repository mode and
+        // break cross-environment pairing.
+        members: project.memberProjects,
+        selection: projectGroupingSelection,
+      }),
     });
     closeProjectGroupingDialog();
   }, [
     closeProjectGroupingDialog,
+    project.memberProjects,
     projectGroupingSelection,
     projectGroupingSettings.sidebarProjectGroupingOverrides,
     projectGroupingTarget,
@@ -2559,7 +2559,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             <DialogTitle>Project grouping</DialogTitle>
             <DialogDescription>
               {projectGroupingTarget
-                ? `Choose how ${projectGroupingTarget.workspaceRoot} should be grouped in the sidebar.`
+                ? project.memberProjects.length > 1
+                  ? `Choose how the ${project.memberProjects.length} checkouts in this project should be grouped in the sidebar.`
+                  : `Choose how ${projectGroupingTarget.workspaceRoot} should be grouped in the sidebar.`
                 : "Choose how this project should be grouped in the sidebar."}
             </DialogDescription>
           </DialogHeader>

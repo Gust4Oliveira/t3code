@@ -28,7 +28,7 @@ const GROUPING_OPTIONS: ReadonlyArray<{
   {
     mode: "repository_path",
     label: "Group by repository path",
-    description: "Keep monorepo paths separate.",
+    description: "Same repo and checkout folder (or monorepo path) appear as one project.",
   },
   {
     mode: "separate",
