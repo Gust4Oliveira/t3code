@@ -1,4 +1,5 @@
 export {
+  applyProjectGroupingOverrideToMembers,
   buildProjectGroups,
   deriveLogicalProjectKey,
   deriveLogicalProjectKeyFromSettings,
