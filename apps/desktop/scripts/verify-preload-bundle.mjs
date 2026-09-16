@@ -72,6 +72,10 @@ const createSandboxModules = (exposedGlobals) => {
     webUtils: {
       getPathForFile: () => "",
     },
+    webFrame: {
+      isWordMisspelled: () => false,
+      getWordSuggestions: () => [],
+    },
   };
 
   return new Map([
@@ -138,6 +142,9 @@ export const verifyPreloadBundle = (source) => {
   );
   if (!exposedGlobals.has("desktopBridge")) missingApis.unshift("desktopBridge exposure");
   if (!exposedGlobals.has(clerkPasskeysGlobal)) missingApis.push(`${clerkPasskeysGlobal} exposure`);
+  if (!exposedGlobals.has("__t3DesktopSpelling")) {
+    missingApis.push("__t3DesktopSpelling exposure");
+  }
 
   if (missingApis.length > 0) {
     throw new Error(`Desktop preload bundle is missing executable APIs: ${missingApis.join(", ")}`);

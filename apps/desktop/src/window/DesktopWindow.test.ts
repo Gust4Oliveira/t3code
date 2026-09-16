@@ -89,6 +89,7 @@ function makeFakeBrowserWindow() {
     openDevTools: vi.fn(),
     reload: vi.fn(),
     replaceMisspelling: vi.fn(),
+    executeJavaScript: vi.fn(async () => null),
     send: vi.fn(),
     setBackgroundThrottling: vi.fn(),
     setWindowOpenHandler: vi.fn(),
@@ -442,6 +443,7 @@ describe("DesktopWindow", () => {
           }),
           copyImageAt: vi.fn(),
           replaceMisspelling: vi.fn(),
+          executeJavaScript: vi.fn(async () => null),
         });
         return contents;
       };
@@ -539,6 +541,61 @@ describe("DesktopWindow", () => {
           assert.equal(contents.copyImageAt.mock.calls.length, 1);
           assert.equal(yield* Queue.size(menus), 0);
         }
+      }).pipe(Effect.provide(layer));
+    }),
+  );
+
+  it.effect("recovers spelling suggestions when Chromium omits misspelledWord", () =>
+    Effect.gen(function* () {
+      const host = makeFakeBrowserWindow();
+      const menus = yield* Queue.unbounded<ElectronMenu.ElectronMenuTemplateInput>();
+      const layer = makeTestLayer({
+        window: host.window,
+        createCount: yield* Ref.make(0),
+        mainWindow: yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none()),
+        onPopupTemplate: (input) => Queue.offer(menus, input).pipe(Effect.asVoid),
+      });
+
+      yield* Effect.gen(function* () {
+        const desktopWindow = yield* DesktopWindow.DesktopWindow;
+        yield* desktopWindow.handleBackendReady(new URL("http://127.0.0.1:3773"));
+
+        const contextMenu = host.webContentsListeners.get("context-menu");
+        assert.isDefined(contextMenu);
+
+        host.window.webContents.executeJavaScript = vi.fn(async () => ({
+          word: "teh",
+          suggestions: ["the", "tech"],
+        }));
+
+        const preventDefault = vi.fn();
+        contextMenu(
+          { preventDefault },
+          {
+            frame: null,
+            x: 20,
+            y: 40,
+            isEditable: true,
+            misspelledWord: "",
+            dictionarySuggestions: [],
+            linkURL: "",
+            mediaType: "none",
+            editFlags: { canCut: true, canCopy: true, canPaste: true, canSelectAll: true },
+          },
+        );
+
+        const menu = yield* Queue.take(menus);
+        assert.equal(
+          (host.window.webContents.executeJavaScript as ReturnType<typeof vi.fn>).mock.calls.length,
+          1,
+        );
+        const correction = menu.template.find((item) => item.label === "the");
+        assert.isDefined(correction?.click);
+        correction.click({} as Electron.MenuItem, undefined, {} as Electron.KeyboardEvent);
+        assert.deepEqual(
+          (host.window.webContents.replaceMisspelling as ReturnType<typeof vi.fn>).mock.calls,
+          [["the"]],
+        );
       }).pipe(Effect.provide(layer));
     }),
   );

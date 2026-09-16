@@ -28,6 +28,7 @@ import * as PreviewManager from "../preview/Manager.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
 import * as ElectronApp from "../electron/ElectronApp.ts";
+import { resolveContextMenuSpelling } from "./desktopSpelling.ts";
 import { makeQuitShortcutHandler } from "./QuitHold.ts";
 
 const TITLEBAR_HEIGHT = 40;
@@ -415,6 +416,9 @@ export const make = Effect.gen(function* () {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        // Explicit: default is true, but context-menu misspelledWord/suggestions
+        // are unreliable when this preference is left implicit on some builds.
+        spellcheck: true,
         webviewTag: true,
       },
     });
@@ -538,57 +542,65 @@ export const make = Effect.gen(function* () {
         // the host renderer when the user right-clicks inside a browser guest.
         contents.focus();
 
-        const menuTemplate: Electron.MenuItemConstructorOptions[] = [];
-
-        if (params.misspelledWord) {
-          for (const suggestion of params.dictionarySuggestions.slice(0, 5)) {
-            menuTemplate.push({
-              label: suggestion,
-              click: () => {
-                if (!contents.isDestroyed()) contents.replaceMisspelling(suggestion);
-              },
-            });
-          }
-          if (params.dictionarySuggestions.length === 0) {
-            menuTemplate.push({ label: "No suggestions", enabled: false });
-          }
-          menuTemplate.push({ type: "separator" });
-        }
-
-        if (Option.isSome(ElectronShell.parseSafeExternalUrl(params.linkURL))) {
-          menuTemplate.push(
-            {
-              label: "Copy Link",
-              click: () => {
-                void runPromise(electronShell.copyText(params.linkURL));
-              },
-            },
-            { type: "separator" },
-          );
-        }
-
-        if (params.mediaType === "image") {
-          menuTemplate.push({
-            label: "Copy Image",
-            click: () => {
-              if (!contents.isDestroyed()) contents.copyImageAt(params.x, params.y);
-            },
-          });
-          menuTemplate.push({ type: "separator" });
-        }
-
-        menuTemplate.push(
-          { role: "cut", enabled: params.editFlags.canCut },
-          { role: "copy", enabled: params.editFlags.canCopy },
-          { role: "paste", enabled: params.editFlags.canPaste },
-          { role: "selectAll", enabled: params.editFlags.canSelectAll },
-        );
-
         void runPromise(
-          electronMenu.popupTemplate({
-            window: ownerWindow,
-            template: menuTemplate,
-            ...(params.frame ? { frame: params.frame } : {}),
+          Effect.gen(function* () {
+            const spelling = yield* Effect.promise(() =>
+              resolveContextMenuSpelling(contents, params),
+            );
+
+            if (contents.isDestroyed() || ownerWindow.isDestroyed()) return;
+
+            const menuTemplate: Electron.MenuItemConstructorOptions[] = [];
+
+            if (spelling) {
+              for (const suggestion of spelling.suggestions) {
+                menuTemplate.push({
+                  label: suggestion,
+                  click: () => {
+                    if (!contents.isDestroyed()) contents.replaceMisspelling(suggestion);
+                  },
+                });
+              }
+              if (spelling.suggestions.length === 0) {
+                menuTemplate.push({ label: "No suggestions", enabled: false });
+              }
+              menuTemplate.push({ type: "separator" });
+            }
+
+            if (Option.isSome(ElectronShell.parseSafeExternalUrl(params.linkURL))) {
+              menuTemplate.push(
+                {
+                  label: "Copy Link",
+                  click: () => {
+                    void runPromise(electronShell.copyText(params.linkURL));
+                  },
+                },
+                { type: "separator" },
+              );
+            }
+
+            if (params.mediaType === "image") {
+              menuTemplate.push({
+                label: "Copy Image",
+                click: () => {
+                  if (!contents.isDestroyed()) contents.copyImageAt(params.x, params.y);
+                },
+              });
+              menuTemplate.push({ type: "separator" });
+            }
+
+            menuTemplate.push(
+              { role: "cut", enabled: params.editFlags.canCut },
+              { role: "copy", enabled: params.editFlags.canCopy },
+              { role: "paste", enabled: params.editFlags.canPaste },
+              { role: "selectAll", enabled: params.editFlags.canSelectAll },
+            );
+
+            yield* electronMenu.popupTemplate({
+              window: ownerWindow,
+              template: menuTemplate,
+              ...(params.frame ? { frame: params.frame } : {}),
+            });
           }),
         );
       });

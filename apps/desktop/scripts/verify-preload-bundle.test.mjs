@@ -6,6 +6,10 @@ const validPreload = `
   const electron = require("electron");
   const PICK_FOLDER_CHANNEL = "desktop:pick-folder";
   electron.contextBridge.exposeInMainWorld("__clerk_internal_electron_passkeys", {});
+  electron.contextBridge.exposeInMainWorld("__t3DesktopSpelling", {
+    wordAtPoint: () => null,
+    resolve: () => null,
+  });
   electron.contextBridge.exposeInMainWorld("desktopBridge", {
     getClientPlatform: () => process.platform,
     getLocalEnvironmentBootstraps: () => [],

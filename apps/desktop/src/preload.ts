@@ -10,6 +10,7 @@ import { exposeClerkBridge } from "@clerk/electron/preload";
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 
 import * as IpcChannels from "./ipc/channels.ts";
+import { createDesktopSpellingBridge, DESKTOP_SPELLING_BRIDGE } from "./window/desktopSpelling.ts";
 
 const SNAP_SHOT_EVENT_TYPES = new Set([
   "requested",
@@ -29,6 +30,16 @@ function isSnapShotEvent(value: unknown): value is DesktopSnapShotEvent {
 }
 
 exposeClerkBridge({ passkeys: true });
+
+// Used by the main-process context menu when Chromium omits misspelledWord /
+// dictionarySuggestions for contenteditable editors (Lexical composer).
+contextBridge.exposeInMainWorld(
+  DESKTOP_SPELLING_BRIDGE,
+  createDesktopSpellingBridge({
+    isWordMisspelled: (word) => webFrame.isWordMisspelled(word),
+    getWordSuggestions: (word) => webFrame.getWordSuggestions(word),
+  }),
+);
 
 // oxlint-disable-next-line t3code/no-global-process-runtime -- Electron exposes the client platform in its sandboxed preload process.
 const clientPlatform = process.platform;
