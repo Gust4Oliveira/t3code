@@ -1830,7 +1830,7 @@ function PullRequestsRouteView() {
         <div className="flex justify-center py-3 text-xs text-muted-foreground">
           {loadingMore ? (
             <span className="flex items-center gap-2">
-              <Spinner aria-hidden className="size-3.5" />
+              <Spinner aria-hidden size="sm" />
               {sentCursors === null ? "Updating pull requests" : "Loading more"}
             </span>
           ) : canContinue || pageSize < MAX_PAGE_SIZE ? (
@@ -2068,7 +2068,7 @@ function PullRequestsRouteView() {
   }, [keybindings]);
 
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
+    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
       <div className="relative flex min-h-0 flex-1">
         {pullRequestsSupported && rightPanelPresent ? openPanelControls : null}
         <PullRequestsColumn {...columnProps} />
@@ -2259,7 +2259,7 @@ function CompactFilterMenu<Value extends string>({
           </>
         )}
       </MenuTrigger>
-      <MenuPopup align="start" side="bottom" className="min-w-40">
+      <MenuPopup align="start" side="bottom">
         <MenuRadioGroup value={value} onValueChange={(next) => onChange(next as Value)}>
           {options.map((option) => {
             const item = (
@@ -2280,9 +2280,7 @@ function CompactFilterMenu<Value extends string>({
             ) : (
               <Tooltip key={option.value}>
                 <TooltipTrigger render={item} />
-                <TooltipPopup side="right" className="max-w-64 break-words">
-                  {option.unavailable}
-                </TooltipPopup>
+                <TooltipPopup side="right">{option.unavailable}</TooltipPopup>
               </Tooltip>
             );
           })}
@@ -2592,7 +2590,7 @@ function PullRequestRefreshControl({
       onClick={onRefresh}
       disabled={refreshing}
     >
-      <RefreshIcon className="size-4" refreshing={refreshing} />
+      <RefreshIcon size="md" refreshing={refreshing} />
     </Button>
   );
 }
